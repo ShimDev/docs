@@ -1,0 +1,104 @@
+---
+title: Introduction
+description: Stop your LLM from breaking production. Shim repairs malformed JSON in <5ms.
+---
+
+# Why Shim Exists
+
+LLMs hallucinate. They truncate JSON mid-stream. They wrap valid objects in markdown fences. They forget closing brackets.
+
+**Your options:**
+1. **Retry** → Expensive ($0.002/retry × 1000 failures = $2/day)
+2. **OutputFixingParser** → Slow (waits for full output, 2-5s delay)
+3. **Regex hacks** → Brittle (breaks on nested objects)
+
+**Shim:** Intercept. Repair. Pass through. 4ms latency.
+
+---
+
+## What Shim Does
+
+Shim is a **streaming reliability layer** for LLM outputs. Route all your LLM traffic through Shim to get:
+
+- **Real-time repair** (token-by-token, no buffering)
+- **Schema validation** (type coercion, missing field detection)
+- **Confidence scoring** (high/medium/low, never silent corruption)
+- **Zero data storage** (privacy-first, GDPR compliant)
+
+---
+
+## How It Works
+
+```typescript
+// Before: Broken JSON from LLM
+const raw = '{"name": "John", "age": "30"'; // Missing closing brace
+
+// After: Shim repairs it
+const response = await fetch('https://api.shim.so/v1/repair', {
+  method: 'POST',
+  headers: { 'Authorization': 'Bearer sk_xxx' },
+  body: JSON.stringify({ raw_output: raw })
+});
+
+const { repaired, metadata } = await response.json();
+// repaired: { name: "John", age: 30 }
+// metadata.confidence: "high"
+// metadata.repairs_applied: ["closed_object_bracket", "coerced_age_to_number"]
+```
+
+---
+
+## Key Features
+
+### 1. Streaming-First Architecture
+Batch repair is a tool. **Streaming repair is infrastructure.** Shim repairs JSON token-by-token without buffering delays.
+
+### 2. Schema-Aware Repair
+Provide a JSON Schema and Shim will:
+- Coerce types (`"30"` → `30`)
+- Detect missing required fields
+- Remove extra fields (strict mode)
+- Validate nested objects
+
+### 3. Never Fails Silently
+Every response includes:
+- Confidence score (high/medium/low)
+- Exact repairs applied
+- Warnings for risky changes
+- Errors for unrecoverable issues
+
+### 4. Zero Data Persistence
+Shim **never stores**:
+- Raw LLM outputs
+- Repaired JSON
+- Field names or values
+
+We only log metadata: repair types, confidence, latency.
+
+---
+
+## Who Uses Shim
+
+**Indie Developers:** Building AI apps with LangChain/LlamaIndex  
+**Startups:** Shipping AI features to production  
+**Enterprises:** Deploying AI at scale with compliance requirements
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quick-start">
+    Get your first repair working in 5 minutes
+  </Card>
+  <Card title="API Reference" icon="code" href="/reference/batch-endpoint">
+    Complete API documentation
+  </Card>
+  <Card title="Playground" icon="flask" href="/playground">
+    Try Shim without signing up
+  </Card>
+  <Card title="TypeScript SDK" icon="npm" href="/sdks/typescript">
+    Install the official SDK
+  </Card>
+</CardGroup>
+ 

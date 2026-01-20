@@ -1,0 +1,114 @@
+{
+    "$schema": "https://mintlify.com/schema.json",
+    "name": "Shim",
+    "logo": {
+        "light": "/images/logos/logo-dark.svg",
+        "dark": "/images/logos/logo-light.svg"
+    },
+    "favicon": "/images/logos/favicon.svg",
+    "colors": {
+        "primary": "#F59E0B",
+        "light": "#FCD34D",
+        "dark": "#D97706",
+        "background": {
+            "dark": "#0F1117"
+        }
+    },
+    "topbar": {
+        "style": "default"
+    },
+    "topbarLinks": [
+        {
+            "name": "Dashboard",
+            "url": "https://shim.so/dashboard"
+        },
+        {
+            "name": "Status",
+            "url": "https://shim.so/status"
+        }
+    ],
+    "topbarCtaButton": {
+        "name": "Get API Key",
+        "url": "https://shim.so/signup",
+        "style": "roundedRectangle"
+    },
+    "tabs": [
+        {
+            "name": "API Reference",
+            "url": "reference"
+        },
+        {
+            "name": "SDKs",
+            "url": "sdks"
+        }
+    ],
+    "navigation": [
+        {
+            "group": "Getting Started",
+            "pages": [
+                "introduction",
+                "quick-start",
+                "authentication",
+                "playground",
+                "troubleshooting"
+            ]
+        },
+        {
+            "group": "Guides",
+            "pages": [
+                "guides/streaming-repair",
+                "guides/schema-validation",
+                "guides/rate-limits",
+                "guides/handling-errors"
+            ]
+        },
+        {
+            "group": "API Reference",
+            "pages": [
+                "reference/batch-endpoint",
+                "reference/streaming-endpoints",
+                "reference/response-object",
+                "reference/error-codes"
+            ]
+        },
+        {
+            "group": "SDKs",
+            "pages": [
+                "sdks/typescript"
+            ]
+        },
+        {
+            "group": "Concepts",
+            "pages": [
+                "concepts/streaming-engine",
+                "concepts/confidence-levels",
+                "concepts/data-privacy"
+            ]
+        },
+        {
+            "group": "Migration",
+            "pages": [
+                "migration/langchain",
+                "migration/openai-json-mode"
+            ]
+        },
+        {
+            "group": "Resources",
+            "pages": [
+                "changelog"
+            ]
+        }
+    ],
+    "footerSocials": {
+        "twitter": "https://twitter.com/shimapi",
+        "github": "https://github.com/shim-so"
+    },
+    "feedback": {
+        "thumbsRating": true,
+        "suggestEdit": true,
+        "raiseIssue": true
+    },
+    "search": {
+        "prompt": "Search documentation..."
+    }
+}

@@ -1,0 +1,85 @@
+---
+title: Changelog
+description: Version history and breaking changes
+---
+
+# Changelog
+
+All notable changes to Shim will be documented here.
+
+---
+
+## v1.0.0 - 2026-01-27 (Launch)
+
+### Features
+
+**Core Repair Engine**
+- ✅ Batch JSON repair (`POST /v1/repair`)
+- ✅ Streaming JSON repair (`POST /v1/repair/stream`)
+- ✅ Schema-aware validation and type coercion
+- ✅ Confidence scoring (high/medium/low)
+- ✅ Strict and lenient modes
+
+**Syntax Repairs**
+- ✅ Truncated objects/arrays (missing closing brackets)
+- ✅ Markdown fence removal (` ```json ... ``` `)
+- ✅ Trailing commas and junk
+- ✅ Smart quote fixes
+- ✅ Incomplete numbers (streaming)
+- ✅ Escape sequence handling
+
+**Schema Repairs**
+- ✅ Type coercion (string → number, safe conversions)
+- ✅ Missing required field detection
+- ✅ Extra field removal (strict mode)
+- ✅ Nested object validation
+
+**Infrastructure**
+- ✅ Cloudflare Workers (edge-deployed, <5ms latency)
+- ✅ D1 database (metadata logging)
+- ✅ KV cache (API key lookup, usage tracking)
+- ✅ Polar.sh integration (billing, subscriptions)
+
+**Pricing Tiers**
+- ✅ Free: 1K repairs/month
+- ✅ Pro: $29/mo for 100K repairs
+- ✅ Team: $99/mo for 1M repairs
+
+### Performance
+- ⚡ 2-10ms core repair latency
+- ⚡ <1ms API key validation (KV cache)
+- ⚡ Zero buffering delay (streaming)
+
+### Documentation
+- 📚 Complete API reference
+- 📚 Quick start guide
+- 📚 TypeScript SDK
+- 📚 Interactive playground
+
+---
+
+## Upcoming
+
+### v1.1 - Guardian Tier (Week 6-8)
+- 🔒 Real-time PII scrubbing (SSN, credit cards, emails)
+- 📊 Extended latency headers
+- 🎯 Advanced schema repair (nested arrays, enums)
+- 💰 Guardian tier: $79/mo
+
+### v1.2 - Enterprise Tier (Month 3-6)
+- 🏢 Custom PII patterns
+- 📝 Audit logs (90-day retention)
+- 👥 Team collaboration
+- 🔐 SSO integration
+
+---
+
+## Breaking Changes
+
+None yet. We follow semantic versioning.
+
+---
+
+## Migration Guides
+
+When breaking changes are introduced, we'll provide detailed migration guides here.
