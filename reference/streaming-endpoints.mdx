@@ -1,0 +1,320 @@
+---
+title: Streaming Repair Endpoints
+description: Repair JSON token-by-token without buffering
+---
+
+# Streaming Repair Endpoints
+
+Repair JSON token-by-token as it arrives from your LLM. No buffering delays.
+
+For complete outputs, use [batch repair](/reference/batch-endpoint).
+
+---
+
+## How Streaming Works
+
+1. **Start a session** → Get a `session_id`
+2. **Push chunks** → Send tokens as they arrive
+3. **Finalize** → Get the repaired result
+
+Sessions expire after 60 seconds of inactivity.
+
+---
+
+## POST /v1/repair/stream/start
+
+Start a new streaming session.
+
+### Request
+
+```bash
+POST https://api.shim.so/v1/repair/stream/start
+```
+
+**Headers:**
+
+| Header | Required | Value |
+|--------|----------|-------|
+| `Authorization` | Yes | `Bearer sk_live_xxxxx` |
+| `Content-Type` | Yes | `application/json` |
+
+**Body:**
+
+```json
+{
+  "schema": JSONSchema,     // Optional
+  "mode": "strict" | "lenient"  // Optional, default: "strict"
+}
+```
+
+### Response
+
+```json
+{
+  "session_id": "sess_abc123",
+  "expires_at": 1234567890000  // Unix timestamp (ms)
+}
+```
+
+### Example
+
+```bash cURL
+curl -X POST https://api.shim.so/v1/repair/stream/start \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schema": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      }
+    }
+  }'
+```
+
+```json Response
+{
+  "session_id": "sess_abc123",
+  "expires_at": 1705780800000
+}
+```
+
+---
+
+## POST /v1/repair/stream/push
+
+Push a chunk to an active session.
+
+### Request
+
+```bash
+POST https://api.shim.so/v1/repair/stream/push
+```
+
+**Headers:**
+
+| Header | Required | Value |
+|--------|----------|-------|
+| `Authorization` | Yes | `Bearer sk_live_xxxxx` |
+| `Content-Type` | Yes | `application/json` |
+
+**Body:**
+
+```json
+{
+  "session_id": string,  // Required
+  "chunk": string        // Required, max 1MB
+}
+```
+
+### Response
+
+```json
+{
+  "state": {
+    "structurally_complete": boolean,
+    "json_parseable": boolean,
+    "safe_to_emit": boolean,
+    "partial": object | null,
+    "buffered": string,
+    "incomplete_token": string,
+    "brace_depth": number,
+    "in_string": boolean,
+    "expected_next": string[]
+  }
+}
+```
+
+**State Fields:**
+
+- `structurally_complete`: Braces balanced, not in string, no incomplete token
+- `json_parseable`: `JSON.parse()` will succeed
+- `safe_to_emit`: Safe to show to user (parseable + no critical issues)
+- `partial`: Parsed object (null if not parseable)
+- `buffered`: Current buffer content
+- `incomplete_token`: Held incomplete token (e.g., `"0."`)
+- `brace_depth`: Current nesting depth
+- `in_string`: Are we inside a string?
+- `expected_next`: Hints for what might come next
+
+### Example
+
+```bash cURL
+curl -X POST https://api.shim.so/v1/repair/stream/push \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "sess_abc123",
+    "chunk": "{\"name\": \"Jo"
+  }'
+```
+
+```json Response
+{
+  "state": {
+    "structurally_complete": false,
+    "json_parseable": false,
+    "safe_to_emit": false,
+    "partial": null,
+    "buffered": "{\"name\": \"Jo",
+    "incomplete_token": "",
+    "brace_depth": 1,
+    "in_string": true,
+    "expected_next": ["hn\"", "e\""]
+  }
+}
+```
+
+---
+
+## POST /v1/repair/stream/finalize
+
+Finalize a session and get the repaired result.
+
+### Request
+
+```bash
+POST https://api.shim.so/v1/repair/stream/finalize
+```
+
+**Headers:**
+
+| Header | Required | Value |
+|--------|----------|-------|
+| `Authorization` | Yes | `Bearer sk_live_xxxxx` |
+| `Content-Type` | Yes | `application/json` |
+
+**Body:**
+
+```json
+{
+  "session_id": string  // Required
+}
+```
+
+### Response
+
+Same as [batch repair response](/reference/batch-endpoint#response).
+
+```json
+{
+  "success": boolean,
+  "repaired": object | null,
+  "metadata": {
+    "confidence": "high" | "medium" | "low" | "n/a",
+    "was_repaired": boolean,
+    "output_valid_json": boolean,
+    "syntax_repairs": RepairDetail[],
+    "schema_repairs": RepairDetail[],
+    "warnings": Warning[],
+    "errors": RepairError[]
+  }
+}
+```
+
+### Example
+
+```bash cURL
+curl -X POST https://api.shim.so/v1/repair/stream/finalize \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type": application/json" \
+  -d '{
+    "session_id": "sess_abc123"
+  }'
+```
+
+```json Response
+{
+  "success": true,
+  "repaired": {
+    "name": "John"
+  },
+  "metadata": {
+    "confidence": "high",
+    "was_repaired": true,
+    "output_valid_json": true,
+    "syntax_repairs": [
+      {
+        "type": "closed_object_bracket",
+        "confidence": "high",
+        "safe": true
+      }
+    ],
+    "schema_repairs": [],
+    "warnings": [],
+    "errors": []
+  }
+}
+```
+
+---
+
+## Complete Example
+
+```bash
+# 1. Start session
+curl -X POST https://api.shim.so/v1/repair/stream/start \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Response: {"session_id": "sess_abc123", "expires_at": 1705780800000}
+
+# 2. Push chunk 1
+curl -X POST https://api.shim.so/v1/repair/stream/push \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "sess_abc123",
+    "chunk": "{\"name\": \"Jo"
+  }'
+
+# 3. Push chunk 2
+curl -X POST https://api.shim.so/v1/repair/stream/push \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type": application/json" \
+  -d '{
+    "session_id": "sess_abc123",
+    "chunk": "hn\", \"age\": 30"
+  }'
+
+# 4. Finalize
+curl -X POST https://api.shim.so/v1/repair/stream/finalize \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type": application/json" \
+  -d '{
+    "session_id": "sess_abc123"
+  }'
+
+# Response: {"success": true, "repaired": {"name": "John", "age": 30}, ...}
+```
+
+---
+
+## Error Codes
+
+See [Error Codes Reference](/reference/error-codes) for full list.
+
+Common errors:
+- `SESSION_NOT_FOUND`: Session expired or doesn't exist
+- `BUFFER_SIZE_EXCEEDED`: Possible hallucination loop (circuit breaker)
+- `SERVICE_UNAVAILABLE`: Server at max capacity
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Batch Endpoint" icon="code" href="/reference/batch-endpoint">
+    Fix complete JSON outputs
+  </Card>
+  <Card title="TypeScript SDK" icon="npm" href="/sdks/typescript">
+    Use the official SDK
+  </Card>
+  <Card title="Streaming Guide" icon="book" href="/guides/streaming-repair">
+    Best practices for streaming
+  </Card>
+  <Card title="Error Codes" icon="triangle-exclamation" href="/reference/error-codes">
+    Complete error reference
+  </Card>
+</CardGroup>

@@ -1,0 +1,301 @@
+---
+title: Error Codes
+description: Complete error reference
+---
+
+# Error Codes
+
+All errors return HTTP 200 with structured envelope. Check `success` field and `metadata.errors` array.
+
+---
+
+## Request Errors
+
+### INVALID_REQUEST
+
+**Cause:** Missing or invalid parameters
+
+**Example:**
+```json
+{
+  "code": "INVALID_REQUEST",
+  "message": "Request validation failed",
+  "severity": "critical",
+  "recoverable": false,
+  "suggestion": "raw_output is required"
+}
+```
+
+**Fix:** Check request body matches API spec
+
+---
+
+### PAYLOAD_TOO_LARGE
+
+**Cause:** Input exceeds size limit
+
+**Limits:**
+- Batch repair: 1MB
+- Streaming chunk: 1MB per chunk
+
+**Example:**
+```json
+{
+  "code": "PAYLOAD_TOO_LARGE",
+  "message": "Input size exceeds 1MB limit (1048577 bytes)",
+  "severity": "critical",
+  "recoverable": false,
+  "suggestion": "Reduce input size or use streaming endpoint"
+}
+```
+
+**Fix:** Split large inputs into smaller chunks using streaming
+
+---
+
+## Repair Errors
+
+### UNPARSEABLE_INPUT
+
+**Cause:** Input contains no valid JSON structure
+
+**Example:**
+```json
+{
+  "code": "UNPARSEABLE_INPUT",
+  "message": "Input does not contain valid JSON structure",
+  "severity": "critical",
+  "recoverable": false,
+  "suggestion": "Check LLM output format"
+}
+```
+
+**Fix:** Verify LLM is configured for JSON output
+
+---
+
+### SCHEMA_VALIDATION_FAILED
+
+**Cause:** Repaired JSON doesn't match provided schema
+
+**Example:**
+```json
+{
+  "code": "SCHEMA_VALIDATION_FAILED",
+  "message": "Repaired output does not match schema",
+  "field": "age",
+  "severity": "high",
+  "recoverable": false,
+  "suggestion": "Check schema definition or LLM prompt"
+}
+```
+
+**Fix:** Review schema or adjust LLM prompt
+
+---
+
+## Session Errors
+
+### SESSION_NOT_FOUND
+
+**Cause:** Streaming session expired or doesn't exist
+
+**Session TTL:** 60 seconds
+
+**Example:**
+```json
+{
+  "code": "SESSION_NOT_FOUND",
+  "message": "Session not found or expired",
+  "severity": "critical",
+  "recoverable": true,
+  "suggestion": "Create a new session with POST /v1/repair/stream/start"
+}
+```
+
+**Fix:** Create new session or reduce time between chunks
+
+---
+
+### BUFFER_SIZE_EXCEEDED
+
+**Cause:** Session buffer exceeded limit (possible hallucination loop)
+
+**Circuit Breaker:** 10MB buffer limit
+
+**Example:**
+```json
+{
+  "code": "BUFFER_SIZE_EXCEEDED",
+  "message": "Buffer size exceeded 10MB limit",
+  "severity": "critical",
+  "recoverable": false,
+  "suggestion": "Possible hallucination loop or attack. Session terminated."
+}
+```
+
+**Fix:** Check LLM for hallucination loops, add max tokens limit
+
+---
+
+## Service Errors
+
+### SERVICE_UNAVAILABLE
+
+**Cause:** Server at maximum capacity
+
+**Example:**
+```json
+{
+  "code": "SERVICE_UNAVAILABLE",
+  "message": "Server is at maximum capacity. Please try again later.",
+  "severity": "critical",
+  "recoverable": true,
+  "suggestion": "Retry with exponential backoff"
+}
+```
+
+**Fix:** Retry with exponential backoff
+
+---
+
+### INTERNAL_ERROR
+
+**Cause:** Unexpected server error
+
+**Example:**
+```json
+{
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred",
+  "severity": "critical",
+  "recoverable": false,
+  "suggestion": "Contact support with request ID: req_abc123"
+}
+```
+
+**Fix:** Contact support with request ID from `X-Request-ID` header
+
+---
+
+## Authentication Errors
+
+### INVALID_API_KEY
+
+**Cause:** API key is invalid or revoked
+
+**Example:**
+```json
+{
+  "code": "INVALID_API_KEY",
+  "message": "API key is invalid",
+  "severity": "critical",
+  "recoverable": false,
+  "suggestion": "Check API key in dashboard"
+}
+```
+
+**Fix:** Generate new API key in dashboard
+
+---
+
+### RATE_LIMIT_EXCEEDED
+
+**Cause:** Exceeded tier rate limit
+
+**Example:**
+```json
+{
+  "code": "RATE_LIMIT_EXCEEDED",
+  "message": "Rate limit exceeded for Free tier",
+  "severity": "high",
+  "recoverable": true,
+  "suggestion": "Upgrade to Pro tier or wait until next month"
+}
+```
+
+**Fix:** Upgrade tier or wait for limit reset
+
+---
+
+## Error Response Structure
+
+All errors follow this structure:
+
+```typescript
+interface RepairError {
+  code: string;           // Error code (see above)
+  message: string;        // Human-readable message
+  field?: string;         // Field that caused error (if applicable)
+  severity: 'critical' | 'high' | 'medium';
+  recoverable: boolean;   // Can you retry?
+  suggestion?: string;    // How to fix
+}
+```
+
+---
+
+## Handling Errors
+
+### Check Success Field
+
+```typescript
+const result = await shim.repair({ raw_output: input });
+
+if (!result.success) {
+  console.error('Repair failed:', result.metadata.errors);
+  
+  // Check if recoverable
+  const canRetry = result.metadata.errors.every(e => e.recoverable);
+  
+  if (canRetry) {
+    // Retry logic
+  } else {
+    // Log and alert
+  }
+}
+```
+
+### Retry Logic
+
+```typescript
+async function repairWithRetry(input: string, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    const result = await shim.repair({ raw_output: input });
+    
+    if (result.success) {
+      return result.repaired;
+    }
+    
+    // Check if recoverable
+    const canRetry = result.metadata.errors.every(e => e.recoverable);
+    if (!canRetry) {
+      throw new Error('Unrecoverable error');
+    }
+    
+    // Exponential backoff
+    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+  }
+  
+  throw new Error('Max retries exceeded');
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Batch Endpoint" icon="code" href="/reference/batch-endpoint">
+    API reference for batch repair
+  </Card>
+  <Card title="Streaming Endpoints" icon="stream" href="/reference/streaming-endpoints">
+    API reference for streaming repair
+  </Card>
+  <Card title="Error Handling Guide" icon="book" href="/guides/handling-errors">
+    Best practices for error handling
+  </Card>
+  <Card title="Rate Limits" icon="gauge" href="/guides/rate-limits">
+    Understand tier limits
+  </Card>
+</CardGroup>

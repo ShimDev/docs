@@ -1,0 +1,343 @@
+---
+title: Response Object
+description: Complete response schema reference
+---
+
+# Response Object
+
+All Shim endpoints return HTTP 200 with this structured envelope.
+
+---
+
+## RepairResponse
+
+```typescript
+interface RepairResponse {
+  success: boolean;
+  repaired: any | null;
+  metadata: RepairMetadata;
+}
+```
+
+### Fields
+
+**`success`** (boolean)
+- `true`: Repair succeeded, use `repaired` object
+- `false`: Unrecoverable error, check `metadata.errors`
+
+**`repaired`** (any | null)
+- The fixed JSON object
+- `null` if repair failed
+- Type depends on input (object, array, primitive)
+
+**`metadata`** (RepairMetadata)
+- Detailed information about the repair
+- See below for full schema
+
+---
+
+## RepairMetadata
+
+```typescript
+interface RepairMetadata {
+  confidence: ConfidenceLevel;
+  was_repaired: boolean;
+  output_valid_json: boolean;
+  syntax_repairs: RepairDetail[];
+  schema_repairs: RepairDetail[];
+  repairs_applied: RepairDetail[];  // Combined list
+  warnings: Warning[];
+  errors: RepairError[];
+}
+```
+
+### Fields
+
+**`confidence`** (ConfidenceLevel)
+- `"high"`: Only structural fixes (safe)
+- `"medium"`: Schema repairs or warnings
+- `"low"`: Ambiguous repairs, review carefully
+- `"n/a"`: No repairs needed
+
+**`was_repaired`** (boolean)
+- `true`: Shim made changes
+- `false`: Input was already valid
+
+**`output_valid_json`** (boolean)
+- `true`: Repaired output is valid JSON
+- `false`: Repair failed, output is not valid JSON
+
+**`syntax_repairs`** (RepairDetail[])
+- Structural fixes: brackets, commas, markdown fences
+- Always safe
+
+**`schema_repairs`** (RepairDetail[])
+- Type coercion, field validation
+- Review these if confidence is `"medium"` or `"low"`
+
+**`repairs_applied`** (RepairDetail[])
+- Combined list of all repairs
+- Includes both syntax and schema repairs
+
+**`warnings`** (Warning[])
+- Non-critical issues
+- Repair succeeded but review recommended
+
+**`errors`** (RepairError[])
+- Critical failures
+- Repair failed if this is non-empty
+
+---
+
+## RepairDetail
+
+```typescript
+interface RepairDetail {
+  type: string;
+  confidence: ConfidenceLevel;
+  safe: boolean;
+  original_value?: any;
+  repaired_value?: any;
+  field?: string;
+}
+```
+
+### Fields
+
+**`type`** (string)
+- Repair type identifier
+- Examples: `"closed_object_bracket"`, `"coerced_age_to_number"`
+
+**`confidence`** (ConfidenceLevel)
+- Confidence level for this specific repair
+- `"high"`, `"medium"`, or `"low"`
+
+**`safe`** (boolean)
+- `true`: Safe to apply automatically
+- `false`: Review recommended
+
+**`original_value`** (any, optional)
+- Original value before repair
+- Only present for schema repairs
+
+**`repaired_value`** (any, optional)
+- Value after repair
+- Only present for schema repairs
+
+**`field`** (string, optional)
+- Field name that was repaired
+- Only present for schema repairs
+
+---
+
+## Warning
+
+```typescript
+interface Warning {
+  code: string;
+  message: string;
+  field?: string;
+  severity: 'low' | 'medium' | 'high';
+  suggestion?: string;
+}
+```
+
+### Fields
+
+**`code`** (string)
+- Warning code identifier
+- Example: `"EXTRA_FIELD_REMOVED"`
+
+**`message`** (string)
+- Human-readable warning message
+
+**`field`** (string, optional)
+- Field that triggered warning
+
+**`severity`** ('low' | 'medium' | 'high')
+- Warning severity level
+
+**`suggestion`** (string, optional)
+- How to address the warning
+
+---
+
+## RepairError
+
+```typescript
+interface RepairError {
+  code: string;
+  message: string;
+  field?: string;
+  severity: 'critical' | 'high' | 'medium';
+  recoverable: boolean;
+  suggestion?: string;
+}
+```
+
+### Fields
+
+**`code`** (string)
+- Error code identifier
+- See [Error Codes](/reference/error-codes)
+
+**`message`** (string)
+- Human-readable error message
+
+**`field`** (string, optional)
+- Field that caused error
+
+**`severity`** ('critical' | 'high' | 'medium')
+- Error severity level
+
+**`recoverable`** (boolean)
+- `true`: Can retry
+- `false`: Unrecoverable, log and alert
+
+**`suggestion`** (string, optional)
+- How to fix the error
+
+---
+
+## Example Responses
+
+### Successful Repair
+
+```json
+{
+  "success": true,
+  "repaired": {
+    "name": "John",
+    "age": 30
+  },
+  "metadata": {
+    "confidence": "high",
+    "was_repaired": true,
+    "output_valid_json": true,
+    "syntax_repairs": [
+      {
+        "type": "closed_object_bracket",
+        "confidence": "high",
+        "safe": true
+      }
+    ],
+    "schema_repairs": [
+      {
+        "type": "coerced_age_to_number",
+        "confidence": "high",
+        "safe": true,
+        "field": "age",
+        "original_value": "30",
+        "repaired_value": 30
+      }
+    ],
+    "repairs_applied": [
+      {
+        "type": "closed_object_bracket",
+        "confidence": "high",
+        "safe": true
+      },
+      {
+        "type": "coerced_age_to_number",
+        "confidence": "high",
+        "safe": true,
+        "field": "age",
+        "original_value": "30",
+        "repaired_value": 30
+      }
+    ],
+    "warnings": [],
+    "errors": []
+  }
+}
+```
+
+### Failed Repair
+
+```json
+{
+  "success": false,
+  "repaired": null,
+  "metadata": {
+    "confidence": "low",
+    "was_repaired": false,
+    "output_valid_json": false,
+    "syntax_repairs": [],
+    "schema_repairs": [],
+    "repairs_applied": [],
+    "warnings": [],
+    "errors": [
+      {
+        "code": "UNPARSEABLE_INPUT",
+        "message": "Input does not contain valid JSON structure",
+        "severity": "critical",
+        "recoverable": false,
+        "suggestion": "Check LLM output format"
+      }
+    ]
+  }
+}
+```
+
+### With Warnings
+
+```json
+{
+  "success": true,
+  "repaired": {
+    "name": "John",
+    "age": 30
+  },
+  "metadata": {
+    "confidence": "medium",
+    "was_repaired": true,
+    "output_valid_json": true,
+    "syntax_repairs": [],
+    "schema_repairs": [
+      {
+        "type": "removed_extra_field",
+        "confidence": "medium",
+        "safe": true,
+        "field": "email"
+      }
+    ],
+    "repairs_applied": [
+      {
+        "type": "removed_extra_field",
+        "confidence": "medium",
+        "safe": true,
+        "field": "email"
+      }
+    ],
+    "warnings": [
+      {
+        "code": "EXTRA_FIELD_REMOVED",
+        "message": "Field 'email' not in schema, removed in strict mode",
+        "field": "email",
+        "severity": "medium",
+        "suggestion": "Add 'email' to schema or use lenient mode"
+      }
+    ],
+    "errors": []
+  }
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Batch Endpoint" icon="code" href="/reference/batch-endpoint">
+    API reference for batch repair
+  </Card>
+  <Card title="Streaming Endpoints" icon="stream" href="/reference/streaming-endpoints">
+    API reference for streaming repair
+  </Card>
+  <Card title="Error Codes" icon="triangle-exclamation" href="/reference/error-codes">
+    Complete error reference
+  </Card>
+  <Card title="TypeScript SDK" icon="npm" href="/sdks/typescript">
+    Use the official SDK
+  </Card>
+</CardGroup>

@@ -1,0 +1,302 @@
+---
+title: TypeScript SDK
+description: Official SDK for Node.js and browsers
+---
+
+# TypeScript SDK
+
+Official TypeScript SDK for Shim. Zero dependencies, works in Node.js 18+ and browsers.
+
+---
+
+## Installation
+
+```bash npm
+npm install shim-sdk
+```
+
+```bash yarn
+yarn add shim-sdk
+```
+
+```bash pnpm
+pnpm add shim-sdk
+```
+
+---
+
+## Quick Start
+
+```typescript
+import { ShimClient } from 'shim-sdk';
+
+const shim = new ShimClient({
+  apiKey: process.env.SHIM_API_KEY
+});
+
+// Batch repair
+const result = await shim.repair({
+  raw_output: '{"name": "John", "age": 30'
+});
+
+console.log(result.repaired); // { name: "John", age: 30 }
+```
+
+---
+
+## Client Configuration
+
+### `new ShimClient(config)`
+
+```typescript
+const shim = new ShimClient({
+  apiKey: string,      // Required
+  baseUrl?: string     // Optional, default: 'https://api.shim.so'
+});
+```
+
+**Parameters:**
+
+- `apiKey` (string, required): Your Shim API key
+- `baseUrl` (string, optional): Custom API base URL (for testing)
+
+**Example:**
+
+```typescript
+const shim = new ShimClient({
+  apiKey: process.env.SHIM_API_KEY,
+  baseUrl: 'https://api.shim.so' // Default
+});
+```
+
+---
+
+## Batch Repair
+
+### `client.repair(request)`
+
+Fix malformed JSON in one request.
+
+```typescript
+const result = await shim.repair({
+  raw_output: string,
+  schema?: JSONSchema,
+  mode?: 'strict' | 'lenient'
+});
+```
+
+**Parameters:**
+
+- `raw_output` (string, required): Malformed JSON string
+- `schema` (JSONSchema, optional): JSON Schema for validation
+- `mode` ('strict' | 'lenient', optional): Repair mode
+
+**Returns:** `Promise<RepairResponse>`
+
+**Example:**
+
+```typescript
+const result = await shim.repair({
+  raw_output: '{"name": "John", "age": "30"',
+  schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      age: { type: 'number' }
+    }
+  }
+});
+
+if (result.success) {
+  console.log(result.repaired); // { name: "John", age: 30 }
+  console.log(result.metadata.confidence); // "high"
+}
+```
+
+---
+
+## Streaming Repair
+
+### `client.stream.start(options)`
+
+Start a new streaming session.
+
+```typescript
+const session = await shim.stream.start({
+  schema?: JSONSchema,
+  mode?: 'strict' | 'lenient'
+});
+```
+
+**Parameters:**
+
+- `schema` (JSONSchema, optional): JSON Schema for validation
+- `mode` ('strict' | 'lenient', optional): Repair mode
+
+**Returns:** `Promise<{ session_id: string; expires_at: number }>`
+
+**Example:**
+
+```typescript
+const session = await shim.stream.start({
+  schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' }
+    }
+  }
+});
+
+console.log(session.session_id); // "sess_abc123"
+```
+
+---
+
+### `client.stream.push(request)`
+
+Push a chunk to an active streaming session.
+
+```typescript
+const result = await shim.stream.push({
+  session_id: string,
+  chunk: string
+});
+```
+
+**Parameters:**
+
+- `session_id` (string, required): Session ID from `stream.start()`
+- `chunk` (string, required): Chunk of JSON to process
+
+**Returns:** `Promise<{ state: StreamingState }>`
+
+**Example:**
+
+```typescript
+const result = await shim.stream.push({
+  session_id: session.session_id,
+  chunk: '{"name": "Jo'
+});
+
+console.log(result.state.structurally_complete); // false
+console.log(result.state.buffered); // '{"name": "Jo'
+```
+
+---
+
+### `client.stream.finalize(request)`
+
+Finalize a streaming session and get the repaired result.
+
+```typescript
+const result = await shim.stream.finalize({
+  session_id: string
+});
+```
+
+**Parameters:**
+
+- `session_id` (string, required): Session ID from `stream.start()`
+
+**Returns:** `Promise<RepairResponse>`
+
+**Example:**
+
+```typescript
+const result = await shim.stream.finalize({
+  session_id: session.session_id
+});
+
+console.log(result.repaired); // { name: "John" }
+```
+
+---
+
+## Complete Streaming Example
+
+```typescript
+import { ShimClient } from 'shim-sdk';
+
+const shim = new ShimClient({
+  apiKey: process.env.SHIM_API_KEY
+});
+
+// Start session
+const session = await shim.stream.start();
+
+// Push chunks as they arrive from LLM
+await shim.stream.push({
+  session_id: session.session_id,
+  chunk: '{"name": "Jo'
+});
+
+await shim.stream.push({
+  session_id: session.session_id,
+  chunk: 'hn", "age": 30'
+});
+
+// Finalize when stream is complete
+const result = await shim.stream.finalize({
+  session_id: session.session_id
+});
+
+console.log(result.repaired); // { name: "John", age: 30 }
+```
+
+---
+
+## TypeScript Support
+
+The SDK includes full TypeScript definitions.
+
+```typescript
+import { ShimClient, RepairResponse, StreamingState } from 'shim-sdk';
+
+const shim = new ShimClient({ apiKey: 'sk_test' });
+
+const result: RepairResponse = await shim.repair({
+  raw_output: '{}'
+});
+
+// Full IntelliSense support
+console.log(result.metadata.confidence); // "high" | "medium" | "low" | "n/a"
+```
+
+---
+
+## Error Handling
+
+The SDK throws errors for network failures. Shim always returns HTTP 200 with structured error responses.
+
+```typescript
+try {
+  const result = await shim.repair({
+    raw_output: 'invalid json'
+  });
+
+  if (!result.success) {
+    console.error('Repair failed:', result.metadata.errors);
+  }
+} catch (error) {
+  console.error('Network error:', error);
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Batch Endpoint" icon="code" href="/reference/batch-endpoint">
+    API reference for batch repair
+  </Card>
+  <Card title="Streaming Endpoints" icon="stream" href="/reference/streaming-endpoints">
+    API reference for streaming repair
+  </Card>
+  <Card title="Response Object" icon="file-code" href="/reference/response-object">
+    Full response schema
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/ShimDev/shim-core/tree/main/sdk">
+    View source code
+  </Card>
+</CardGroup>

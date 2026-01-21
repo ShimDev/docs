@@ -1,0 +1,287 @@
+---
+title: Schema Validation
+description: Add type checking and field validation to repairs
+---
+
+# Schema Validation
+
+Provide a JSON Schema and Shim will validate and coerce types during repair.
+
+---
+
+## Why Use Schemas
+
+Without a schema, Shim only fixes syntax (brackets, commas, markdown fences).
+
+With a schema, Shim also:
+- Coerces types (`"30"` → `30`)
+- Detects missing required fields
+- Removes extra fields (strict mode)
+- Validates nested objects
+
+---
+
+## Basic Schema
+
+```typescript
+const schema = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    age: { type: 'number' }
+  },
+  required: ['name', 'age']
+};
+
+const result = await shim.repair({
+  raw_output: '{"name": "John", "age": "30"}',
+  schema
+});
+
+// result.repaired: { name: "John", age: 30 }
+// Shim coerced "30" to 30
+```
+
+---
+
+## Type Coercion
+
+Shim coerces types when safe:
+
+| From | To | Example |
+|------|-----|---------|
+| `"30"` | `30` | String to number |
+| `"true"` | `true` | String to boolean |
+| `30` | `"30"` | Number to string |
+| `true` | `"true"` | Boolean to string |
+
+**Unsafe coercions are rejected:**
+- `"abc"` → `number` (not a valid number)
+- `"maybe"` → `boolean` (not `"true"` or `"false"`)
+
+---
+
+## Required Fields
+
+Mark fields as required:
+
+```typescript
+const schema = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    email: { type: 'string' }
+  },
+  required: ['name', 'email']
+};
+
+const result = await shim.repair({
+  raw_output: '{"name": "John"}',
+  schema
+});
+
+// result.success: false
+// result.metadata.errors: [{ code: 'MISSING_REQUIRED_FIELD', field: 'email' }]
+```
+
+---
+
+## Strict vs Lenient Mode
+
+### Strict Mode (default)
+
+Removes extra fields not in schema:
+
+```typescript
+const result = await shim.repair({
+  raw_output: '{"name": "John", "age": 30, "email": "john@example.com"}',
+  schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      age: { type: 'number' }
+    }
+  },
+  mode: 'strict'  // Default
+});
+
+// result.repaired: { name: "John", age: 30 }
+// email was removed
+```
+
+### Lenient Mode
+
+Keeps extra fields:
+
+```typescript
+const result = await shim.repair({
+  raw_output: '{"name": "John", "age": 30, "email": "john@example.com"}',
+  schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      age: { type: 'number' }
+    }
+  },
+  mode: 'lenient'
+});
+
+// result.repaired: { name: "John", age: 30, email: "john@example.com" }
+// email was kept
+```
+
+---
+
+## Nested Objects
+
+Validate nested structures:
+
+```typescript
+const schema = {
+  type: 'object',
+  properties: {
+    user: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        age: { type: 'number' }
+      },
+      required: ['name']
+    }
+  }
+};
+
+const result = await shim.repair({
+  raw_output: '{"user": {"name": "John", "age": "30"}}',
+  schema
+});
+
+// result.repaired: { user: { name: "John", age: 30 } }
+```
+
+---
+
+## Arrays
+
+Validate array items:
+
+```typescript
+const schema = {
+  type: 'object',
+  properties: {
+    tags: {
+      type: 'array',
+      items: { type: 'string' }
+    }
+  }
+};
+
+const result = await shim.repair({
+  raw_output: '{"tags": ["ai", "llm", 123]}',
+  schema
+});
+
+// result.repaired: { tags: ["ai", "llm", "123"] }
+// 123 was coerced to "123"
+```
+
+---
+
+## Enums
+
+Restrict values to specific options:
+
+```typescript
+const schema = {
+  type: 'object',
+  properties: {
+    status: {
+      type: 'string',
+      enum: ['active', 'inactive', 'pending']
+    }
+  }
+};
+
+const result = await shim.repair({
+  raw_output: '{"status": "active"}',
+  schema
+});
+
+// result.success: true
+
+const invalid = await shim.repair({
+  raw_output: '{"status": "unknown"}',
+  schema
+});
+
+// invalid.success: false
+// invalid.metadata.errors: [{ code: 'ENUM_MISMATCH', field: 'status' }]
+```
+
+---
+
+## Default Values
+
+Shim does NOT add default values. If a field is missing and not required, it stays missing.
+
+Use your application logic to add defaults after repair.
+
+---
+
+## Schema Repairs in Metadata
+
+All schema repairs are logged:
+
+```typescript
+const result = await shim.repair({
+  raw_output: '{"name": "John", "age": "30"}',
+  schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      age: { type: 'number' }
+    }
+  }
+});
+
+console.log(result.metadata.schema_repairs);
+// [
+//   {
+//     type: 'coerced_age_to_number',
+//     confidence: 'high',
+//     safe: true,
+//     field: 'age',
+//     original_value: '30',
+//     repaired_value: 30
+//   }
+// ]
+```
+
+---
+
+## Best Practices
+
+1. **Start with lenient mode** during development
+2. **Switch to strict mode** in production (prevents data leakage)
+3. **Mark critical fields as required**
+4. **Use enums for status fields**
+5. **Review `metadata.schema_repairs`** if confidence is `"medium"` or `"low"`
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Batch Endpoint" icon="code" href="/reference/batch-endpoint">
+    API reference for batch repair
+  </Card>
+  <Card title="Response Object" icon="file-code" href="/reference/response-object">
+    Full response schema
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/handling-errors">
+    Handle validation failures
+  </Card>
+  <Card title="TypeScript SDK" icon="npm" href="/sdks/typescript">
+    Use the official SDK
+  </Card>
+</CardGroup>

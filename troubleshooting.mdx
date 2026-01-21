@@ -1,0 +1,305 @@
+---
+title: Troubleshooting
+description: Common issues and how to fix them
+---
+
+# Troubleshooting
+
+Common issues and solutions.
+
+---
+
+## Repair Failed
+
+### Input Not Valid JSON
+
+**Symptom:**
+```json
+{
+  "success": false,
+  "metadata": {
+    "errors": [{
+      "code": "UNPARSEABLE_INPUT",
+      "message": "Input does not contain valid JSON structure"
+    }]
+  }
+}
+```
+
+**Causes:**
+- LLM output is not JSON at all
+- Input is completely malformed
+
+**Fix:**
+1. Check LLM prompt includes "output JSON"
+2. Use JSON mode if available (OpenAI, Anthropic)
+3. Add example JSON in prompt
+
+---
+
+### Schema Validation Failed
+
+**Symptom:**
+```json
+{
+  "success": false,
+  "metadata": {
+    "errors": [{
+      "code": "SCHEMA_VALIDATION_FAILED",
+      "field": "age"
+    }]
+  }
+}
+```
+
+**Causes:**
+- Repaired JSON doesn't match schema
+- Required field missing
+- Type coercion failed
+
+**Fix:**
+1. Review `metadata.errors` for specific field
+2. Check schema matches expected LLM output
+3. Use lenient mode during development
+4. Add field to schema or make it optional
+
+---
+
+## Low Confidence
+
+**Symptom:**
+```json
+{
+  "success": true,
+  "metadata": {
+    "confidence": "low"
+  }
+}
+```
+
+**Causes:**
+- Ambiguous repairs
+- Multiple possible fixes
+- Risky type coercion
+
+**Fix:**
+1. Review `metadata.repairs_applied`
+2. Check `metadata.warnings`
+3. Improve LLM prompt for clearer output
+4. Add schema for type guidance
+
+---
+
+## Rate Limit Exceeded
+
+**Symptom:**
+```json
+{
+  "success": false,
+  "metadata": {
+    "errors": [{
+      "code": "RATE_LIMIT_EXCEEDED",
+      "message": "Rate limit exceeded for Free tier"
+    }]
+  }
+}
+```
+
+**Fix:**
+1. Upgrade to Pro or Team tier
+2. Wait until next month (limits reset monthly)
+3. Cache repaired results to reduce requests
+
+---
+
+## Session Not Found
+
+**Symptom:**
+```json
+{
+  "error": {
+    "code": "SESSION_NOT_FOUND",
+    "message": "Session not found or expired"
+  }
+}
+```
+
+**Causes:**
+- Session expired (60s TTL)
+- Invalid session ID
+- Session already finalized
+
+**Fix:**
+1. Create new session with `/v1/repair/stream/start`
+2. Reduce time between chunks
+3. Don't reuse session IDs
+
+---
+
+## Buffer Size Exceeded
+
+**Symptom:**
+```json
+{
+  "error": {
+    "code": "BUFFER_SIZE_EXCEEDED",
+    "message": "Buffer size exceeded 10MB limit"
+  }
+}
+```
+
+**Causes:**
+- LLM hallucination loop
+- Extremely large output
+- Attack attempt
+
+**Fix:**
+1. Add `max_tokens` limit to LLM
+2. Monitor LLM output length
+3. Use batch repair for large outputs
+
+---
+
+## Payload Too Large
+
+**Symptom:**
+```json
+{
+  "success": false,
+  "metadata": {
+    "errors": [{
+      "code": "PAYLOAD_TOO_LARGE",
+      "message": "Input size exceeds 1MB limit"
+    }]
+  }
+}
+```
+
+**Fix:**
+1. Use streaming repair for large outputs
+2. Split input into smaller chunks
+3. Reduce LLM `max_tokens`
+
+---
+
+## Invalid API Key
+
+**Symptom:**
+```json
+{
+  "error": {
+    "code": "INVALID_API_KEY",
+    "message": "API key is invalid"
+  }
+}
+```
+
+**Fix:**
+1. Check API key format: `sk_live_xxxxx`
+2. Verify key in dashboard
+3. Generate new key if revoked
+4. Check `Authorization` header format: `Bearer sk_live_xxxxx`
+
+---
+
+## Slow Response Times
+
+**Symptom:** Requests taking >100ms
+
+**Causes:**
+- Large input size
+- Complex schema validation
+- Network latency
+
+**Fix:**
+1. Use streaming repair for real-time processing
+2. Simplify schema (remove unnecessary fields)
+3. Use CDN or edge deployment
+4. Check network latency to `api.shim.so`
+
+---
+
+## Type Coercion Not Working
+
+**Symptom:** `"30"` not coerced to `30`
+
+**Causes:**
+- No schema provided
+- Field not in schema
+- Lenient mode enabled
+
+**Fix:**
+1. Add schema with correct types
+2. Include field in schema properties
+3. Use strict mode (default)
+
+---
+
+## Extra Fields Removed
+
+**Symptom:** Fields missing from repaired output
+
+**Causes:**
+- Strict mode enabled (default)
+- Field not in schema
+
+**Fix:**
+1. Use lenient mode: `{ mode: 'lenient' }`
+2. Add field to schema
+3. Check `metadata.warnings` for removed fields
+
+---
+
+## Getting Help
+
+Still stuck?
+
+1. **Check error code:** See [Error Codes](/reference/error-codes)
+2. **Review metadata:** Look at `repairs_applied`, `warnings`, `errors`
+3. **Test with cURL:** Isolate SDK vs API issues
+4. **Contact support:** Include `X-Request-ID` header value
+
+---
+
+## Debug Checklist
+
+```typescript
+const result = await shim.repair({ raw_output: input });
+
+// 1. Check success
+console.log('Success:', result.success);
+
+// 2. Check confidence
+console.log('Confidence:', result.metadata.confidence);
+
+// 3. Review repairs
+console.log('Repairs:', result.metadata.repairs_applied);
+
+// 4. Check warnings
+console.log('Warnings:', result.metadata.warnings);
+
+// 5. Check errors
+console.log('Errors:', result.metadata.errors);
+
+// 6. Verify output
+console.log('Valid JSON:', result.metadata.output_valid_json);
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Codes" icon="triangle-exclamation" href="/reference/error-codes">
+    Complete error reference
+  </Card>
+  <Card title="Response Object" icon="file-code" href="/reference/response-object">
+    Understand metadata fields
+  </Card>
+  <Card title="Schema Validation" icon="check-circle" href="/guides/schema-validation">
+    Fix validation issues
+  </Card>
+  <Card title="Contact Support" icon="envelope" href="mailto:support@shim.so">
+    Get help from the team
+  </Card>
+</CardGroup>

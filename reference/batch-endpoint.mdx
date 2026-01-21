@@ -1,0 +1,276 @@
+---
+title: Batch Repair Endpoint
+description: Fix malformed JSON in one request
+---
+
+# POST /v1/repair
+
+Fix malformed JSON in a single request. Use this for complete LLM outputs where you have the full string.
+
+For token-by-token repair, use [streaming endpoints](/reference/streaming-endpoints).
+
+---
+
+## Request
+
+```bash
+POST https://api.shim.so/v1/repair
+```
+
+### Headers
+
+| Header | Required | Value |
+|--------|----------|-------|
+| `Authorization` | Yes | `Bearer sk_live_xxxxx` |
+| `Content-Type` | Yes | `application/json` |
+
+### Body
+
+```json
+{
+  "raw_output": string,
+  "schema": JSONSchema,     // Optional
+  "mode": "strict" | "lenient"  // Optional, default: "strict"
+}
+```
+
+#### Parameters
+
+**`raw_output`** (string, required)
+- The malformed JSON string from your LLM
+- Max size: 1MB
+- Can include markdown fences, trailing commas, truncated objects
+
+**`schema`** (JSONSchema, optional)
+- JSON Schema for validation and type coercion
+- Shim will coerce types (`"30"` → `30`)
+- Detect missing required fields
+- Remove extra fields in strict mode
+
+**`mode`** (string, optional)
+- `"strict"`: Remove extra fields not in schema (default)
+- `"lenient"`: Keep extra fields
+
+---
+
+## Response
+
+Always returns HTTP 200 with structured envelope. Check `success` field.
+
+```json
+{
+  "success": boolean,
+  "repaired": object | null,
+  "metadata": {
+    "confidence": "high" | "medium" | "low" | "n/a",
+    "was_repaired": boolean,
+    "output_valid_json": boolean,
+    "syntax_repairs": RepairDetail[],
+    "schema_repairs": RepairDetail[],
+    "repairs_applied": RepairDetail[],
+    "warnings": Warning[],
+    "errors": RepairError[]
+  }
+}
+```
+
+### Fields
+
+**`success`** (boolean)
+- `true`: Repair succeeded, use `repaired` object
+- `false`: Unrecoverable error, check `metadata.errors`
+
+**`repaired`** (object | null)
+- The fixed JSON object
+- `null` if repair failed
+
+**`metadata.confidence`** (string)
+- `"high"`: Only structural fixes (safe)
+- `"medium"`: Schema repairs or warnings
+- `"low"`: Ambiguous repairs, review carefully
+- `"n/a"`: No repairs needed
+
+**`metadata.was_repaired`** (boolean)
+- `true`: Shim made changes
+- `false`: Input was already valid
+
+**`metadata.syntax_repairs`** (array)
+- Structural fixes: missing brackets, trailing commas, markdown fences
+- Always safe
+
+**`metadata.schema_repairs`** (array)
+- Type coercion, field validation
+- Review these if confidence is `"medium"` or `"low"`
+
+**`metadata.warnings`** (array)
+- Non-critical issues
+- Repair succeeded but review recommended
+
+**`metadata.errors`** (array)
+- Critical failures
+- Repair failed if this is non-empty
+
+---
+
+## Examples
+
+### Basic Repair
+
+```bash cURL
+curl -X POST https://api.shim.so/v1/repair \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "raw_output": "{\"name\": \"John\", \"age\": 30"
+  }'
+```
+
+```json Response
+{
+  "success": true,
+  "repaired": {
+    "name": "John",
+    "age": 30
+  },
+  "metadata": {
+    "confidence": "high",
+    "was_repaired": true,
+    "output_valid_json": true,
+    "syntax_repairs": [
+      {
+        "type": "closed_object_bracket",
+        "confidence": "high",
+        "safe": true
+      }
+    ],
+    "schema_repairs": [],
+    "warnings": [],
+    "errors": []
+  }
+}
+```
+
+### With Schema Validation
+
+```bash cURL
+curl -X POST https://api.shim.so/v1/repair \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type": application/json" \
+  -d '{
+    "raw_output": "{\"name\": \"John\", \"age\": \"30\"}",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "age": { "type": "number" }
+      },
+      "required": ["name", "age"]
+    }
+  }'
+```
+
+```json Response
+{
+  "success": true,
+  "repaired": {
+    "name": "John",
+    "age": 30
+  },
+  "metadata": {
+    "confidence": "high",
+    "was_repaired": true,
+    "output_valid_json": true,
+    "syntax_repairs": [],
+    "schema_repairs": [
+      {
+        "type": "coerced_age_to_number",
+        "confidence": "high",
+        "safe": true,
+        "field": "age",
+        "original_value": "30",
+        "repaired_value": 30
+      }
+    ],
+    "warnings": [],
+    "errors": []
+  }
+}
+```
+
+### Failed Repair
+
+```bash cURL
+curl -X POST https://api.shim.so/v1/repair \
+  -H "Authorization: Bearer sk_live_xxxxx" \
+  -H "Content-Type": application/json" \
+  -d '{
+    "raw_output": "not even close to JSON"
+  }'
+```
+
+```json Response
+{
+  "success": false,
+  "repaired": null,
+  "metadata": {
+    "confidence": "low",
+    "was_repaired": false,
+    "output_valid_json": false,
+    "syntax_repairs": [],
+    "schema_repairs": [],
+    "warnings": [],
+    "errors": [
+      {
+        "code": "UNPARSEABLE_INPUT",
+        "message": "Input does not contain valid JSON structure",
+        "severity": "critical",
+        "recoverable": false,
+        "suggestion": "Check LLM output format"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## Error Codes
+
+See [Error Codes Reference](/reference/error-codes) for full list.
+
+Common errors:
+- `INVALID_REQUEST`: Missing or invalid parameters
+- `PAYLOAD_TOO_LARGE`: Input exceeds 1MB
+- `UNPARSEABLE_INPUT`: No valid JSON structure found
+- `SCHEMA_VALIDATION_FAILED`: Repaired JSON doesn't match schema
+
+---
+
+## Rate Limits
+
+| Tier | Limit | Overage |
+|------|-------|---------|
+| Free | 1K repairs/month | Degraded service |
+| Pro | 100K repairs/month | Degraded service |
+| Team | 1M repairs/month | $0.30/1K overage |
+
+See [Rate Limits Guide](/guides/rate-limits) for details.
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Streaming Endpoints" icon="stream" href="/reference/streaming-endpoints">
+    Repair JSON token-by-token
+  </Card>
+  <Card title="Response Object" icon="file-code" href="/reference/response-object">
+    Full response schema
+  </Card>
+  <Card title="Error Codes" icon="triangle-exclamation" href="/reference/error-codes">
+    Complete error reference
+  </Card>
+  <Card title="TypeScript SDK" icon="npm" href="/sdks/typescript">
+    Use the official SDK
+  </Card>
+</CardGroup>
